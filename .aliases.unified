@@ -18,7 +18,9 @@ alias la='ls -a'
 
 alias ga='git add'
 alias gb='git branch'
+alias gbl='git branch --list'
 alias gc='git commit'
+alias gca='git commit --amend'
 alias gd='git diff'
 alias gs='git status' # Use with caution because it can shadow ghost script
 
