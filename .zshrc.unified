@@ -1,0 +1,141 @@
+#
+# ~/.zshrc.unified
+#
+
+# expire duplicates first
+setopt HIST_EXPIRE_DUPS_FIRST
+# do not store duplications
+setopt HIST_IGNORE_DUPS
+#ignore duplicates when searching
+setopt HIST_FIND_NO_DUPS
+# removes blank lines from history
+setopt HIST_REDUCE_BLANKS
+
+# key bindings
+unsetopt MULTIBYTE
+autoload zkbd
+[[ ! -f ${ZDOTDIR:-$HOME}/.zkbd/$TERM-$VENDOR-$OSTYPE ]] && zkbd
+source ${ZDOTDIR:-$HOME}/.zkbd/$TERM-$VENDOR-$OSTYPE
+
+[[ -n ${key[Backspace]} ]] && bindkey "${key[Backspace]}" backward-delete-char
+[[ -n ${key[Insert]} ]] && bindkey "${key[Insert]}" overwrite-mode
+[[ -n ${key[Home]} ]] && bindkey "${key[Home]}" beginning-of-line
+[[ -n ${key[PageUp]} ]] && bindkey "${key[PageUp]}" up-line-or-history
+[[ -n ${key[Delete]} ]] && bindkey "${key[Delete]}" delete-char
+[[ -n ${key[End]} ]] && bindkey "${key[End]}" end-of-line
+[[ -n ${key[PageDown]} ]] && bindkey "${key[PageDown]}" down-line-or-history
+[[ -n ${key[Up]} ]] && bindkey "${key[Up]}" up-line-or-search
+[[ -n ${key[Left]} ]] && bindkey "${key[Left]}" backward-char
+[[ -n ${key[Down]} ]] && bindkey "${key[Down]}" down-line-or-search
+[[ -n ${key[Right]} ]] && bindkey "${key[Right]}" forward-char
+
+
+
+# Make short work dir name for prompt
+shorten_prompt_wd() {
+  local pretty_pwd="$(dirs)"
+  if [ "~" = "$pretty_pwd" ]; then
+    echo -n "~"
+  else
+    local opt=shwordsplit
+    local opts_need_restore=$(setopt | grep $opt)
+    setopt $opt
+
+    local oldIFS="$IFS"
+    IFS='/'
+    local dir_list=(${pretty_pwd%/*})
+    for dir in $dir_list; do
+      if [ "~" = "$dir" ]; then
+        echo -n "$dir"
+      elif [ -n "$dir" ]; then
+        echo /$dir | cut -c -4 -z
+      fi
+    done
+    echo -n "/${pretty_pwd##*/}"
+
+    IFS="$oldIFS"
+
+    if [ -z "$opts_need_restore" ]; then
+      unsetopt $opt
+    fi
+  fi
+}
+
+# Make calculations for displaying last command elapsed time in right prompt
+zmodload zsh/datetime
+
+prompt_preexec() {
+  prompt_prexec_realtime=${EPOCHREALTIME}
+}
+
+prompt_precmd() {
+  if (( prompt_prexec_realtime )); then
+    local -rF elapsed_realtime=$(( EPOCHREALTIME - prompt_prexec_realtime ))
+    local -rF s=$(( elapsed_realtime%60 ))
+    local -ri elapsed_s=${elapsed_realtime}
+    local -ri m=$(( (elapsed_s/60)%60 ))
+    local -ri h=$(( elapsed_s/3600 ))
+    local -ri ms=$(( (s*1000)/1000 ))
+    prompt_elapsed_time_color="%F{green}"
+    if (( h > 0 )); then
+      printf -v prompt_elapsed_time '%ih %im' ${h} ${m}
+      prompt_elapsed_time_color="%F{red}"
+    elif (( m > 0 )); then
+      printf -v prompt_elapsed_time '%im %is' ${m} ${s}
+      prompt_elapsed_time_color="%F{yellow}"
+    elif (( s >= 10 )); then
+      printf -v prompt_elapsed_time '%.2fs' ${s} # like 12.34s
+    elif (( s >= 1 )); then
+      printf -v prompt_elapsed_time '%is%ims' ${s} ${ms}
+    else
+      printf -v prompt_elapsed_time '%ims' ${ms}
+    fi
+    unset prompt_prexec_realtime
+  else
+    # Clear previous result when hitting ENTER with no command to execute
+    unset prompt_elapsed_time
+  fi
+
+  # Update short workdir prompt
+  short_prompt_wd="$(shorten_prompt_wd)"
+}
+
+setopt nopromptbang prompt{cr,percent,sp,subst}
+
+autoload -Uz add-zsh-hook
+add-zsh-hook preexec prompt_preexec
+add-zsh-hook precmd prompt_precmd
+
+# Map vim mode to corresponding char for right prompt
+function zle-line-init zle-keymap-select {
+  vim_mode=${${KEYMAP/vicmd/N}/(main|viins)/I}
+  vim_mode_color=${${KEYMAP/vicmd/%F{brightwhite}}/(main|viins)/%F{blue}}
+  zle reset-prompt
+}
+
+zle -N zle-line-init
+zle -N zle-keymap-select
+
+# Left prompt
+PS1='%F{cyan}[%B%F{green}%n@%m%f%b:%B%F{blue}${short_prompt_wd}%b%F{cyan}]%B%(!.%F{red}#.%F{blue}$)%b%f> '
+
+# Right prompt
+RPS1='%(?. .%B%F{red}%?%b) %F{cyan}[ %B${prompt_elapsed_time_color}${prompt_elapsed_time}%b %F{cyan}|%f%D{%H:%M:%S}%F{cyan}] ${vim_mode_color}[%B${vim_mode}%b]'
+
+# Source aliases
+if [ -f ~/.aliases ]; then
+  . ~/.aliases
+fi
+
+# Setup default editor
+FORCED_EDITOR=vim
+
+if [ -n "${FORCED_EDITOR}" ]; then
+  export EDITOR="${FORCED_EDITOR}"
+elif command -v nvim &>/dev/null; then
+  export EDITOR=nvim
+elif command -v vim &>/dev/null; then
+  export EDITOR=vim
+fi
+
+export SUDO_EDITOR="${EDITOR}"
